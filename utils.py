@@ -530,7 +530,7 @@ def final_train_data(df):
 
     df_clean = df_clean.fillna(0)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    df['timestamp'] = pd.to_datetime(today)
+    df_clean['timestamp'] = pd.to_datetime(today)
 
     print(f"Before: {len(df.columns)} columns")
     print(f"After: {len(df_clean.columns)} columns")
