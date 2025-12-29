@@ -1056,7 +1056,7 @@ def preprocess_data(df):
 
 
 # %%
-clean_data = preprocess_data(train_df)
+clean_data = preprocess_data(df)
 
 # %%
 clean_data.columns
@@ -1072,6 +1072,16 @@ clean_data.head(10)
 from utils import final_train_data
 
 final_train_df = final_train_data(clean_data)
+final_train_df["Date"] = final_train_df["Date"].dt.strftime("%Y-%m-%d")
+
+# %%
+pk_cols = ["Date", "Player_1", "Player_2"]
+duplicate_count = final_train_df.duplicated(subset=pk_cols).sum()
+if duplicate_count > 0:
+    print(f"Removing {duplicate_count} duplicates...")
+    final_train_df = final_train_df.drop_duplicates(subset=pk_cols, keep="first")
+    print(f"✓ Final rows: {len(final_train_df):,}")
+
 
 # %% [markdown]
 # ## Hopsworks Feature Store Setup
@@ -1086,10 +1096,11 @@ tennis_matches_fg = fs.get_or_create_feature_group(
     # Name of your feature group (what you'll reference later)
     name="tennis_matches",
     # Description of what's inside
-    description="ATP tennis match data (2000-2024) with player statistics, encoded categories, win percentages, and symmetric perspectives for match outcome prediction",
+    description="ATP tennis match data (2000-2025) with player statistics, encoded categories, win percentages, and symmetric perspectives for match outcome prediction",
     # Version (start with 1, increment if you change features)
-    version=1,
+    version=2,
     primary_key=["Date", "Player_1", "Player_2"],
+    event_time="timestamp",
     # Enable for real-time predictions
     online_enabled=True,
 )
@@ -1097,3 +1108,5 @@ tennis_matches_fg = fs.get_or_create_feature_group(
 # %%
 tennis_matches_fg.insert(final_train_df)
 print(f"Uploaded {len(final_train_df):,} matches to Hopsworks!")
+
+# %%
