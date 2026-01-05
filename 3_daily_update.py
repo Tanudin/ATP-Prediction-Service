@@ -20,11 +20,14 @@ print("=" * 60)
 
 # Hopsworks login - API key from environment variable
 api_key = os.getenv("HOPSWORKS_API_KEY")
+host = os.getenv("HOPSWORKS_HOST", "eu-west.cloud.hopsworks.ai")
+
 if not api_key:
     raise ValueError("HOPSWORKS_API_KEY environment variable not set")
 
 project = hopsworks.login(
     project="ATP_Tennis_Prediction",
+    host=host,
     api_key_value=api_key
 )
 fs = project.get_feature_store()
