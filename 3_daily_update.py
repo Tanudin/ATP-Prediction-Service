@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+import os
 import dotenv
 import hopsworks
 import kagglehub
@@ -10,13 +11,22 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 from utils import preprocess_data, final_train_data
 
+# Load .env file if it exists (for local development)
 dotenv.load_dotenv()
 
 print("=" * 60)
 print(f"DAILY UPDATE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print("=" * 60)
 
-project = hopsworks.login(project="ATP_Tennis_Prediction")
+# Hopsworks login - API key from environment variable
+api_key = os.getenv("HOPSWORKS_API_KEY")
+if not api_key:
+    raise ValueError("HOPSWORKS_API_KEY environment variable not set")
+
+project = hopsworks.login(
+    project="ATP_Tennis_Prediction",
+    api_key_value=api_key
+)
 fs = project.get_feature_store()
 mr = project.get_model_registry()
 
