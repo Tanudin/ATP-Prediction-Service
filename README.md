@@ -1,13 +1,35 @@
-# 🎾 ATP Tennis Match Prediction System
+# 🎾 ATP Tennis Match Prediction Service
 
-Machine learning system for predicting ATP tennis match outcomes with betting strategy analysis.
+An automated machine learning system that predicts ATP tennis match outcomes using historical data, with daily updates and betting strategy analysis.
 
-## 📋 Overview
+## � Live Dashboard
 
-This system:
-1. **Trains** on historical ATP data (2000-2024)
-2. **Backtests** predictions on 2025 matches
-3. **Updates daily** via GitHub Actions: predict new matches → get results → retrain model
+**[View Live Predictions →](https://your-app-name.streamlit.app)** 
+
+## 📊 Project Overview
+
+- **Model**: XGBoost Classifier with 45 engineered features
+- **Accuracy**: 61.01% on 2025 test data (2,515 matches)
+- **ROC-AUC**: 0.6630
+- **Training Data**: 64,166 matches (2000-2024)
+- **Daily Updates**: Automated via GitHub Actions at 3 AM UTC
+
+## ✨ Features
+
+- 🤖 **Automated Daily Predictions**: Fetches new matches from Kaggle, makes predictions, retrains model
+- 📈 **Betting Strategy Analysis**: Compares odds-based betting vs. smart betting (confidence threshold ≥65%)
+- 📊 **Interactive Dashboard**: Streamlit UI with backtest results, betting comparison, and model performance
+- 🔄 **Continuous Learning**: Model retrains daily with new match data
+- ☁️ **Cloud Integration**: Hopsworks for feature store and model registry
+
+## 🎯 2025 Backtest Results
+
+| Strategy | Bets | Accuracy | Profit | ROI |
+|----------|------|----------|--------|-----|
+| **All Bets** | 5,030 | 61.0% | -$379.24 | -7.54% |
+| **Smart Betting** | 2,945 | 67.4% | -$203.15 | -6.90% |
+
+*Smart betting (≥65% confidence) improved accuracy by 6.4% and reduced losses by $176*
 
 ## 🚀 Quick Start
 
@@ -16,133 +38,114 @@ This system:
 - Hopsworks account
 - Kaggle API credentials
 
-### Setup
+- Python 3.11
+- Hopsworks account
+- Kaggle API credentials
 
-1. **Install dependencies**
+### Installation
+
+1. **Clone and install**
 ```bash
+git clone https://github.com/Tanudin/ATP-Prediction-Service.git
+cd ATP-Prediction-Service
 pip install -r requirements.txt
 ```
 
-2. **Configure environment**
+2. **Set up environment variables**
 
 Create `.env` file:
 ```env
-HOPSWORKS_API_KEY=your_key_here
-KAGGLE_USERNAME=your_username
+HOPSWORKS_API_KEY=your_api_key_here
+HOPSWORKS_HOST=eu-west.cloud.hopsworks.ai
+HOPSWORKS_PROJECT=ATP_Tennis_Prediction
+KAGGLE_NAME=your_kaggle_username
 KAGGLE_KEY=your_kaggle_key
 ```
 
-3. **Train historical model**
+3. **Run the pipeline**
 ```bash
+# Step 1: Train initial model (one-time)
 python 1_train_historical.py
-```
 
-4. **Generate backtest results**
-```bash
+# Step 2: Backtest on 2025 data
 python 2_backtest_2025.py
-```
 
-5. **Run Streamlit UI**
-```bash
+# Step 3: Launch dashboard
 streamlit run streamlit_app.py
 ```
 
-## 📊 Workflow
+## �️ Tech Stack
 
-### Historical Training (`1_train_historical.py`)
-- Downloads ATP dataset from Kaggle
-- Trains XGBoost model on 2000-2024 matches
-- Uploads data to Hopsworks
-- Saves model locally and to Hopsworks Model Registry
+- **ML**: XGBoost, scikit-learn, pandas, numpy
+- **Feature Store**: Hopsworks
+- **Data Source**: Kaggle (ATP Tennis Dataset)
+- **Dashboard**: Streamlit
+- **Automation**: GitHub Actions
+- **Deployment**: Streamlit Community Cloud
 
-### 2025 Backtest (`2_backtest_2025.py`)
-- Tests model predictions on 2025 season
-- Simulates flat betting ($1/match) and Kelly Criterion strategies
-- Generates profit curves for UI visualization
-- Saves results to `backtest_2025.csv`
-
-### Daily Updates (`3_daily_update.py`)
-Automated via GitHub Actions at 3 AM UTC daily:
-1. Check Kaggle for new matches
-2. Predict outcomes using latest model
-3. Compare predictions with actual results
-4. Retrain model with updated data
-5. Save predictions to `latest_predictions.csv`
-
-## 🎯 Features
-
-### Model Features (No Odds!)
-- Player ATP rankings and points
-- Historical win percentages
-- Surface-specific performance (Clay, Hard, Grass, Carpet)
-- Tournament series performance (Grand Slam, Masters 1000, ATP 500/250)
-- Court type performance (Indoor/Outdoor)
-- Match context (encoded categorical features)
-
-### Betting Strategies
-- **Flat Betting**: Fixed $1 bet on every predicted winner
-- **Kelly Criterion**: Bet size proportional to edge and confidence (max 10% bankroll)
-
-## 📁 File Structure
+## 📁 Project Structure
 
 ```
 ATP-Prediction-Service/
-├── 1_train_historical.py      # Train on 2000-2024 data
-├── 2_backtest_2025.py         # Backtest on 2025 season
-├── 3_daily_update.py          # Daily prediction + retrain
-├── streamlit_app.py           # Web UI dashboard
-├── utils.py                   # Feature engineering functions
-├── requirements.txt           # Python dependencies
-├── .env                       # API credentials (not committed)
-├── .github/
-│   └── workflows/
-│       └── daily_update.yml   # GitHub Actions automation
-├── tennis_model/              # Saved XGBoost model
-├── backtest_2025.csv          # 2025 backtest results (for UI)
-├── latest_predictions.csv     # Daily predictions
-└── notebooks/                 # Jupyter notebooks (for exploration)
+├── 1_train_historical.py      # Initial model training (2000-2024)
+├── 2_backtest_2025.py          # Backtest on 2025 data + metrics
+├── 3_daily_update.py           # Daily automated predictions & retraining
+├── streamlit_app.py            # Interactive dashboard (3 tabs)
+├── utils.py                    # Feature engineering functions
+├── requirements.txt            # Python dependencies
+├── .github/workflows/
+│   └── daily_update.yml        # GitHub Actions workflow
+├── backtest_2025.csv           # 2025 backtest results
+├── model_metrics.json          # ML evaluation metrics
+├── feature_importance.csv      # Top 20 features by importance
+└── tennis_model/               # Trained XGBoost model
 ```
 
-## 🔧 GitHub Actions Setup
+## 📈 Top Features (by Importance)
 
-Add these secrets to your repository:
+1. **Rank_Diff** (131.66) - Difference in player rankings
+2. **Win_Pct_Diff** (47.56) - Win percentage differential
+3. **Pts_Diff** (25.54) - ATP points differential
+4. **Player1_Rank** (20.24) - Player 1 ranking
+5. **Player1_Elo** (19.85) - Player 1 Elo rating
+
+## ⚙️ GitHub Actions Setup
+
+The project includes automated daily updates via GitHub Actions. See [SETUP_GITHUB_ACTIONS.md](SETUP_GITHUB_ACTIONS.md) for detailed instructions.
+
+**Required Secrets:**
 - `HOPSWORKS_API_KEY`
-- `KAGGLE_USERNAME`
+- `HOPSWORKS_HOST`
+- `KAGGLE_NAME`
 - `KAGGLE_KEY`
 
-Go to: **Settings → Secrets and variables → Actions → New repository secret**
+## � Dashboard Tabs
 
-## 📈 Streamlit UI
+1. **2025 Backtest Results** - Overview metrics, profit charts, recent predictions
+2. **Betting Strategy Comparison** - All Bets vs Smart Betting performance
+3. **Model Performance** - Accuracy, Precision, Recall, F1, ROC-AUC, Feature Importance
 
-The dashboard shows:
-- **2025 Backtest**: Prediction accuracy and betting performance
-- **Latest Predictions**: Daily match predictions with results
-- **Betting Performance**: ROI comparison between flat and Kelly strategies
-- **About**: System documentation and setup instructions
+## 🎓 Model Details
 
-## 🛠️ Tech Stack
+- **Algorithm**: XGBoost (Gradient Boosting)
+- **Features**: 45 engineered features (player rankings, Elo, stats, head-to-head)
+- **Training**: 128,328 samples (symmetric - each match as Player1 and Player2)
+- **Evaluation**: 5 metrics (Accuracy, Precision, Recall, F1, ROC-AUC)
+- **Version**: Stored in Hopsworks Model Registry (currently v7)
 
-- **Model**: XGBoost Classifier
-- **Feature Store**: Hopsworks
-- **Data Source**: Kaggle ATP Dataset (2000-present)
-- **Automation**: GitHub Actions
-- **UI**: Streamlit + Plotly
-- **Language**: Python 3.11
+## 🤝 Contributing
 
-## 📊 Performance Metrics
+This is an academic project for ID2223 - Scalable Machine Learning. Feel free to fork and experiment!
 
-**Historical Training (2000-2024)**
-- Accuracy: ~71-72% (without odds)
-- ROC-AUC: ~0.78-0.80
+## 🔗 Links
 
-**2025 Backtest**
-- Prediction Accuracy: ~70%
-- Flat Betting ROI: ~+10-15%
-- Kelly Betting ROI: ~+15-20%
+- **Hopsworks**: [app.hopsworks.ai](https://app.hopsworks.ai)
+- **Kaggle Dataset**: [ATP Tennis 2000-2023](https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull)
+- **Streamlit Cloud**: [streamlit.io/cloud](https://streamlit.io/cloud)
 
-## 🧪 Development
+---
 
-The `notebooks/` folder contains Jupyter notebooks for:
+**Built with ❤️ for scalable ML and tennis analytics**
 - Exploratory data analysis
 - Feature engineering experiments
 - Model training iterations
