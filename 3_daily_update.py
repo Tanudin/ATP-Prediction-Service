@@ -35,8 +35,10 @@ mr = project.get_model_registry()
 
 tennis_fg = fs.get_feature_group("tennis_matches", version=2)
 existing_data = tennis_fg.read()
-existing_data["Date"] = pd.to_datetime(existing_data["Date"])
-latest_date_in_fs = existing_data["Date"].max()
+
+# Column names from Hopsworks are lowercase
+existing_data["date"] = pd.to_datetime(existing_data["date"])
+latest_date_in_fs = existing_data["date"].max()
 
 print(f"\nLatest data in Hopsworks: {latest_date_in_fs.strftime('%Y-%m-%d')}")
 
