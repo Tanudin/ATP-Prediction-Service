@@ -4,6 +4,29 @@ from sklearn.preprocessing import LabelEncoder
 import datetime 
 
 
+def preprocess_data(df):
+    """
+    Complete preprocessing pipeline for ATP match data.
+    Processes raw match data through all feature engineering steps.
+    """
+    print("Computing player match history...")
+    match_history = compute_player_match_history(df)
+    
+    print("Computing match percentages...")
+    match_percentages = compute_match_percentages(match_history)
+    
+    print("Encoding categorical features...")
+    encoded = encode_categorical_features(match_percentages)
+    
+    print("Computing derived features...")
+    derived = compute_derived_features(encoded)
+    
+    print("Creating symmetric dataset...")
+    symmetric = create_symmetric_dataset(derived)
+    
+    return symmetric
+
+
 def preprocess_player_stats(df):
     # 1. base statistics - wins, losses, total matches
     wins = df["Winner"].value_counts()

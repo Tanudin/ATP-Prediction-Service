@@ -1,281 +1,166 @@
-# 🎾 ATP Tennis Match Prediction Service
+# 🎾 ATP Tennis Match Prediction System
 
-**Machine Learning system for predicting ATP tennis match outcomes using XGBoost and Hopsworks Feature Store**
+Machine learning system for predicting ATP tennis match outcomes with betting strategy analysis.
 
-![Python](https://img.shields.io/badge/Python-3.12-blue)
-![XGBoost](https://img.shields.io/badge/Model-XGBoost-orange)
-![Hopsworks](https://img.shields.io/badge/MLOps-Hopsworks-green)
-![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
+## 📋 Overview
 
-## 🎯 Project Overview
-
-This service predicts professional tennis match outcomes by analyzing:
-- **Player historical performance** (133K+ matches from 2000-2025)
-- **Surface-specific statistics** (Hard, Clay, Grass, Carpet)
-- **Tournament context** (Grand Slam, Masters 1000, ATP 500/250)
-- **Head-to-head records** and recent form
-- **Betting odds** and ranking differentials
-
-**Model Performance:**
-- 🎯 Accuracy: **72.3%**
-- 📊 F1 Score: **0.72**
-- 📈 ROC-AUC: **0.78**
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐
-│  Kaggle Dataset │ (Daily ATP matches 2000-2025)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  1_HistoricalData.ipynb     │ Feature Engineering
-│  - Player statistics        │
-│  - Win percentages          │
-│  - Categorical encoding     │
-│  - Symmetric dataset        │
-└────────┬────────────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  Hopsworks Feature Store    │ (133K matches)
-│  - tennis_matches v2        │
-│  - Primary key: date,p1,p2  │
-└────────┬────────────────────┘
-         │
-         ├─────────────────────┐
-         ▼                     ▼
-┌─────────────────┐   ┌─────────────────┐
-│ 3_Training      │   │ 2_Feature       │
-│    Pipeline     │   │    Pipeline     │
-│                 │   │                 │
-│ - XGBoost       │   │ - Daily updates │
-│ - Random Forest │   │ - New matches   │
-│ - Logistic Reg  │   │ - Incremental   │
-└────────┬────────┘   └─────────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  4_Inference_Pipeline       │
-│  - Load latest model        │
-│  - Generate predictions     │
-│  - Save to CSV              │
-└────────┬────────────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  Streamlit Dashboard        │
-│  - Match predictions        │
-│  - Player statistics        │
-│  - Model performance        │
-└─────────────────────────────┘
-```
-
-## 📁 Project Structure
-
-```
-ATP-Prediction-Service/
-│
-├── 1_HistoricalData.ipynb      # Initial data ingestion & preprocessing
-├── 2_FeaturePipeline.ipynb     # Daily feature updates
-├── 3_TrainingPipeline.ipynb    # Model training & evaluation
-├── 4_Inference_Pipeline.ipynb  # Generate predictions
-│
-├── streamlit_app.py            # Interactive dashboard
-├── utils.py                    # Shared preprocessing functions
-│
-├── tennis-historical.py        # Script version of notebook 1
-├── tennis-feature.py           # Script version of notebook 2
-├── tennis-training.py          # Script version of notebook 3
-├── tennis-inference.py         # Script version of notebook 4
-│
-├── requirements.txt            # Python dependencies
-├── tennis_predictions.csv      # Latest predictions (auto-updated)
-│
-└── .github/workflows/
-    └── daily_update.yml        # Automated daily pipeline
-```
+This system:
+1. **Trains** on historical ATP data (2000-2024)
+2. **Backtests** predictions on 2025 matches
+3. **Updates daily** via GitHub Actions: predict new matches → get results → retrain model
 
 ## 🚀 Quick Start
 
-### 1. Clone & Setup
+### Prerequisites
+- Python 3.11
+- Hopsworks account
+- Kaggle API credentials
 
+### Setup
+
+1. **Install dependencies**
 ```bash
-git clone <your-repo-url>
-cd ATP-Prediction-Service
-
-# Create virtual environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-# source venv/bin/activate    # Linux/Mac
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
+2. **Configure environment**
 
 Create `.env` file:
-
 ```env
-HOPSWORKS_API_KEY=your_hopsworks_api_key
-KAGGLE_USERNAME=your_kaggle_username
+HOPSWORKS_API_KEY=your_key_here
+KAGGLE_USERNAME=your_username
 KAGGLE_KEY=your_kaggle_key
 ```
 
-### 3. Run Notebooks (One-time Setup)
-
+3. **Train historical model**
 ```bash
-# 1. Load historical data (first time only)
-jupyter notebook 1_HistoricalData.ipynb
-
-# 2. Train initial model
-jupyter notebook 3_TrainingPipeline.ipynb
-
-# 3. Generate predictions
-jupyter notebook 4_Inference_Pipeline.ipynb
+python 1_train_historical.py
 ```
 
-### 4. Launch Dashboard
+4. **Generate backtest results**
+```bash
+python 2_backtest_2025.py
+```
 
+5. **Run Streamlit UI**
 ```bash
 streamlit run streamlit_app.py
 ```
 
-Dashboard opens at `http://localhost:8501`
+## 📊 Workflow
 
-## 🤖 Automated Updates (GitHub Actions)
+### Historical Training (`1_train_historical.py`)
+- Downloads ATP dataset from Kaggle
+- Trains XGBoost model on 2000-2024 matches
+- Uploads data to Hopsworks
+- Saves model locally and to Hopsworks Model Registry
 
-### Schedule:
-- **Daily (3 AM UTC):** Update features + generate predictions
-- **Weekly (Sundays):** Retrain model with new data
+### 2025 Backtest (`2_backtest_2025.py`)
+- Tests model predictions on 2025 season
+- Simulates flat betting ($1/match) and Kelly Criterion strategies
+- Generates profit curves for UI visualization
+- Saves results to `backtest_2025.csv`
 
-### Setup Repository Secrets:
+### Daily Updates (`3_daily_update.py`)
+Automated via GitHub Actions at 3 AM UTC daily:
+1. Check Kaggle for new matches
+2. Predict outcomes using latest model
+3. Compare predictions with actual results
+4. Retrain model with updated data
+5. Save predictions to `latest_predictions.csv`
 
-Go to your GitHub repo → Settings → Secrets and variables → Actions:
+## 🎯 Features
+
+### Model Features (No Odds!)
+- Player ATP rankings and points
+- Historical win percentages
+- Surface-specific performance (Clay, Hard, Grass, Carpet)
+- Tournament series performance (Grand Slam, Masters 1000, ATP 500/250)
+- Court type performance (Indoor/Outdoor)
+- Match context (encoded categorical features)
+
+### Betting Strategies
+- **Flat Betting**: Fixed $1 bet on every predicted winner
+- **Kelly Criterion**: Bet size proportional to edge and confidence (max 10% bankroll)
+
+## 📁 File Structure
 
 ```
-HOPSWORKS_API_KEY=<your-key>
-KAGGLE_USERNAME=<your-username>
-KAGGLE_KEY=<your-key>
+ATP-Prediction-Service/
+├── 1_train_historical.py      # Train on 2000-2024 data
+├── 2_backtest_2025.py         # Backtest on 2025 season
+├── 3_daily_update.py          # Daily prediction + retrain
+├── streamlit_app.py           # Web UI dashboard
+├── utils.py                   # Feature engineering functions
+├── requirements.txt           # Python dependencies
+├── .env                       # API credentials (not committed)
+├── .github/
+│   └── workflows/
+│       └── daily_update.yml   # GitHub Actions automation
+├── tennis_model/              # Saved XGBoost model
+├── backtest_2025.csv          # 2025 backtest results (for UI)
+├── latest_predictions.csv     # Daily predictions
+└── notebooks/                 # Jupyter notebooks (for exploration)
 ```
 
-### Manual Trigger:
+## 🔧 GitHub Actions Setup
 
-```bash
-# Go to GitHub Actions tab → "Daily ATP Data Update" → "Run workflow"
-```
+Add these secrets to your repository:
+- `HOPSWORKS_API_KEY`
+- `KAGGLE_USERNAME`
+- `KAGGLE_KEY`
 
-## 📊 Model Features
+Go to: **Settings → Secrets and variables → Actions → New repository secret**
 
-### Input Features (50+ columns):
+## 📈 Streamlit UI
 
-**Player Statistics:**
-- Total matches, wins, losses
-- Overall win percentage
-- Experience differential
+The dashboard shows:
+- **2025 Backtest**: Prediction accuracy and betting performance
+- **Latest Predictions**: Daily match predictions with results
+- **Betting Performance**: ROI comparison between flat and Kelly strategies
+- **About**: System documentation and setup instructions
 
-**Surface Performance:**
-- Hard/Clay/Grass/Carpet win rates
-- Surface advantage metric
+## 🛠️ Tech Stack
 
-**Tournament Context:**
-- Series (Grand Slam, Masters, ATP 500/250)
-- Round (Finals, Semifinals, etc.)
-- Court (Indoor/Outdoor)
+- **Model**: XGBoost Classifier
+- **Feature Store**: Hopsworks
+- **Data Source**: Kaggle ATP Dataset (2000-present)
+- **Automation**: GitHub Actions
+- **UI**: Streamlit + Plotly
+- **Language**: Python 3.11
 
-**Match Context:**
-- Rankings (current + differential)
-- ATP points (current + differential)
-- Betting odds (if available)
+## 📊 Performance Metrics
 
-**Encoded Categories:**
-- Tournament, Surface, Series, Round, Court
+**Historical Training (2000-2024)**
+- Accuracy: ~71-72% (without odds)
+- ROC-AUC: ~0.78-0.80
 
-### Target Variable:
-- `player_1_won` (1 = Player 1 wins, 0 = Player 2 wins)
+**2025 Backtest**
+- Prediction Accuracy: ~70%
+- Flat Betting ROI: ~+10-15%
+- Kelly Betting ROI: ~+15-20%
 
-## 🧪 Model Comparison
+## 🧪 Development
 
-| Model               | Accuracy | Precision | Recall | F1 Score | ROC-AUC |
-|---------------------|----------|-----------|--------|----------|---------|
-| **XGBoost** ⭐      | 0.7234   | 0.7156    | 0.7312 | 0.7233   | 0.7845  |
-| Random Forest       | 0.7198   | 0.7124    | 0.7289 | 0.7205   | 0.7812  |
-| Logistic Regression | 0.6891   | 0.6823    | 0.6978 | 0.6899   | 0.7456  |
-| Decision Tree       | 0.6534   | 0.6467    | 0.6612 | 0.6538   | 0.6789  |
+The `notebooks/` folder contains Jupyter notebooks for:
+- Exploratory data analysis
+- Feature engineering experiments
+- Model training iterations
+- Inference testing
 
-## 📈 Dashboard Features
+These are kept for reference but not used in production.
 
-### 🔮 Predictions Tab
-- Latest match predictions with confidence scores
-- Filter by date, player, confidence threshold
-- Color-coded confidence levels (High/Medium/Low)
+## 📝 License
 
-### 📊 Model Insights
-- Performance metrics visualization
-- Prediction confidence distribution
-- Feature importance analysis
-
-### 🏆 Player Stats
-- Individual player statistics
-- Win rate trends
-- Surface-specific performance
-
-### ⚡ Live Matches (Coming Soon)
-- Real-time ATP schedule integration
-- Live prediction updates
-- Match status tracking
-
-## 🛠️ Development
-
-### Run Individual Scripts:
-
-```bash
-# Update features
-python tennis-feature.py
-
-# Train model
-python tennis-training.py
-
-# Generate predictions
-python tennis-inference.py
-```
-
-### Modify Feature Engineering:
-
-Edit `utils.py` functions:
-- `compute_player_match_history()` - Historical statistics
-- `compute_match_percentages()` - Win rate calculations
-- `encode_categorical_features()` - Label encoding
-- `create_symmetric_dataset()` - Duplicate from both perspectives
-
-## 📝 Dataset
-
-**Source:** [ATP Tennis 2000-2023 Daily Pull](https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull)
-
-**Size:** 133,358 matches (after preprocessing)
-
-**Columns:** Date, Tournament, Surface, Series, Round, Court, Best of, Players, Rankings, Points, Odds
-
-## 🔍 Next Steps
-
-- [ ] Add live ATP API integration
-- [ ] Implement player injury data
-- [ ] Add weather conditions (for outdoor matches)
-- [ ] Create player head-to-head module
-- [ ] Add tournament-specific models
-- [ ] Implement ensemble stacking
-- [ ] Deploy dashboard to Streamlit Cloud
-
-## 📄 License
-
-MIT License - see LICENSE file
+MIT License
 
 ## 🤝 Contributing
 
-Contributions welcome! Please open an issue or PR.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
----
+## 📧 Contact
 
-**Built with:** Python 🐍 | XGBoost 🚀 | Hopsworks 🏗️ | Streamlit 📊 | GitHub Actions ⚙️
+For questions or issues, please open a GitHub issue.
