@@ -26,7 +26,7 @@ jobs:
       - name: Run daily update
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_NAME: ${{ secrets.KAGGLE_NAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           python 3_daily_update.py
