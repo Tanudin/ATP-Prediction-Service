@@ -1,0 +1,94 @@
+name: Daily ATP Data Update & Model Retraining
+
+on:
+  schedule:
+    # Run daily at 3 AM UTC (after most ATP matches conclude)
+    - cron: '0 3 * * *'
+  workflow_dispatch:  # Allow manual triggering for testing
+
+jobs:
+  update-features:
+    name: Update Feature Store
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run Feature Pipeline (New Match Data)
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          python tennis-feature.py
+  
+  retrain-model:
+    name: Retrain Model Weekly
+    runs-on: ubuntu-latest
+    needs: update-features
+    # Only retrain on Sundays (weekly basis)
+    if: github.event.schedule == '0 3 * * 0' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run Training Pipeline
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python tennis-training.py
+  
+  generate-predictions:
+    name: Generate Daily Predictions
+    runs-on: ubuntu-latest
+    needs: update-features
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run Inference Pipeline
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+        run: |
+          python tennis-inference.py
+      
+      - name: Commit updated predictions
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add tennis_predictions.csv
+          git diff --quiet && git diff --staged --quiet || git commit -m "🎾 Update predictions - $(date +'%Y-%m-%d %H:%M UTC')"
+          git push
