@@ -12,6 +12,20 @@ from datetime import datetime
 
 st.set_page_config(page_title="ATP Match Predictor", page_icon="🎾", layout="wide")
 
+# Custom CSS to make selectbox dropdown wider to show full names
+st.markdown("""
+<style>
+    /* Make the dropdown menu wider */
+    div[data-baseweb="select"] > div {
+        min-width: 250px !important;
+    }
+    /* Make dropdown list wider */
+    [data-baseweb="popover"] {
+        min-width: 300px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🎾 ATP Tennis Match Prediction System")
 st.markdown("AI-powered tennis predictions with betting strategy analysis")
 
@@ -69,7 +83,7 @@ def load_and_process_historical_data():
         st.error(f"Could not load historical data: {e}")
         return None, None
 
-def extract_player_features(processed_df, player_name):
+def extract_player_features(processed_df, historical_df, player_name):
     """Extract the latest statistics for a specific player from processed data"""
     player_rows = processed_df[processed_df['Player_1'] == player_name]
     
@@ -82,7 +96,34 @@ def extract_player_features(processed_df, player_name):
     for col in latest_row.index:
         if col.startswith('P1_'):
             feature_name = col[3:]
-            player_features[feature_name] = latest_row[col]
+            # Skip Rank and Pts - we'll get those from historical data
+            if feature_name not in ['Rank', 'Pts']:
+                player_features[feature_name] = latest_row[col]
+    
+    # Extract latest rank and points from historical data
+    # Look for player in both Player_1 and Player_2 positions
+    p1_matches = historical_df[historical_df['Player_1'] == player_name].copy()
+    p2_matches = historical_df[historical_df['Player_2'] == player_name].copy()
+    
+    # Get the most recent match
+    latest_rank = 50  # default
+    latest_pts = 0    # default
+    
+    if len(p1_matches) > 0:
+        last_p1 = p1_matches.iloc[-1]
+        latest_rank = last_p1['Rank_1'] if last_p1['Rank_1'] > 0 else 50
+        latest_pts = last_p1['Pts_1'] if last_p1['Pts_1'] > 0 else 0
+    
+    if len(p2_matches) > 0:
+        last_p2 = p2_matches.iloc[-1]
+        # Use P2 data if it's more recent or P1 data doesn't exist
+        if len(p1_matches) == 0 or last_p2['Date'] > last_p1['Date']:
+            latest_rank = last_p2['Rank_2'] if last_p2['Rank_2'] > 0 else 50
+            latest_pts = last_p2['Pts_2'] if last_p2['Pts_2'] > 0 else 0
+    
+    # Don't add Rank and Pts here - they'll be added with P1_/P2_ prefix in build_match_features
+    player_features['_latest_rank'] = latest_rank
+    player_features['_latest_pts'] = latest_pts
     
     return player_features
 
@@ -90,11 +131,32 @@ def build_match_features(player1_stats, player2_stats, surface, round_type, seri
     """Build feature vector for a match given two players' statistics"""
     match_features = {}
     
+    # IMPORTANT: Add features in the exact order the model expects
+    # Model expects: Best_of, Rank_1, Rank_2, Rank_Diff, Pts_1, Pts_2, Pts_Diff first
+    
+    # 1. First add the ranking/points features at the beginning
+    match_features['Best_of'] = best_of
+    match_features['Rank_1'] = player1_stats.get('_latest_rank', 50)
+    match_features['Rank_2'] = player2_stats.get('_latest_rank', 50)
+    match_features['Rank_Diff'] = match_features['Rank_2'] - match_features['Rank_1']  # Lower rank number = better
+    match_features['Pts_1'] = player1_stats.get('_latest_pts', 0)
+    match_features['Pts_2'] = player2_stats.get('_latest_pts', 0)
+    match_features['Pts_Diff'] = match_features['Pts_1'] - match_features['Pts_2']
+    
+    # 2. Then add player statistics
     for feat, val in player1_stats.items():
-        match_features[f'P1_{feat}'] = val
+        if not feat.startswith('_'):  # Skip temporary fields like _latest_rank
+            match_features[f'P1_{feat}'] = val
     
     for feat, val in player2_stats.items():
-        match_features[f'P2_{feat}'] = val
+        if not feat.startswith('_'):  # Skip temporary fields
+            match_features[f'P2_{feat}'] = val
+    
+    # 3. Then add encoded features
+    match_features['Tournament_Encoded'] = 0
+    
+    # 3. Then add encoded features
+    match_features['Tournament_Encoded'] = 0
     
     surface_map = {'Hard': 0, 'Clay': 1, 'Grass': 2, 'Carpet': 3}
     match_features['Surface_Encoded'] = surface_map.get(surface, 0)
@@ -111,9 +173,7 @@ def build_match_features(player1_stats, player2_stats, surface, round_type, seri
     court_map = {'Indoor': 0, 'Outdoor': 1}
     match_features['Court_Encoded'] = court_map.get(court, 0)
     
-    match_features['Best_of'] = best_of
-    match_features['Tournament_Encoded'] = 0
-    
+    # 4. Finally add derived features
     match_features['Win_Pct_Diff'] = match_features.get('P1_Win_Pct', 0.5) - match_features.get('P2_Win_Pct', 0.5)
     match_features['Experience_Diff'] = match_features.get('P1_Total_Matches', 0) - match_features.get('P2_Total_Matches', 0)
     
@@ -136,20 +196,15 @@ def build_match_features(player1_stats, player2_stats, surface, round_type, seri
     court_feat = 'WinPct_Indoor' if court == 'Indoor' else 'WinPct_Outdoor'
     match_features['Court_Advantage'] = match_features.get(f'P1_{court_feat}', 0) - match_features.get(f'P2_{court_feat}', 0)
     
-    match_features['Rank_1'] = 50
-    match_features['Rank_2'] = 50
-    match_features['Rank_Diff'] = 0
-    match_features['Pts_1'] = 0
-    match_features['Pts_2'] = 0
-    match_features['Pts_Diff'] = 0
+    # Odds_Diff at the end (not used in prediction but needed for compatibility)
     match_features['Odds_Diff'] = 0
     
     return match_features
 
-def make_prediction(player1, player2, surface, round_type, series, court, best_of, processed_df):
+def make_prediction(player1, player2, surface, round_type, series, court, best_of, historical_df, processed_df):
     """Make a prediction for a match using pre-computed player statistics"""
-    player1_stats = extract_player_features(processed_df, player1)
-    player2_stats = extract_player_features(processed_df, player2)
+    player1_stats = extract_player_features(processed_df, historical_df, player1)
+    player2_stats = extract_player_features(processed_df, historical_df, player2)
     
     if player1_stats is None:
         st.error(f"No historical data found for {player1}")
@@ -177,6 +232,25 @@ def make_prediction(player1, player2, surface, round_type, series, court, best_o
     
     X_pred = match_df.drop([col for col in drop_cols if col in match_df.columns], axis=1)
     
+    # Reorder columns to match the exact order the model expects
+    expected_feature_order = [
+        'Best_of', 'Rank_1', 'Rank_2', 'Rank_Diff', 'Pts_1', 'Pts_2', 'Pts_Diff',
+        'P1_Total_Matches', 'P1_Wins', 'P1_Losses', 'P2_Total_Matches', 'P2_Wins', 'P2_Losses',
+        'P1_Win_Pct', 'P2_Win_Pct',
+        'P1_WinPct_Hard', 'P2_WinPct_Hard', 'P1_WinPct_Clay', 'P2_WinPct_Clay',
+        'P1_WinPct_Grass', 'P2_WinPct_Grass', 'P1_WinPct_Carpet', 'P2_WinPct_Carpet',
+        'P1_WinPct_ATP250', 'P2_WinPct_ATP250', 'P1_WinPct_ATP500', 'P2_WinPct_ATP500',
+        'P1_WinPct_Grand_Slam', 'P2_WinPct_Grand_Slam',
+        'P1_WinPct_Masters_1000', 'P2_WinPct_Masters_1000',
+        'P1_WinPct_Indoor', 'P2_WinPct_Indoor', 'P1_WinPct_Outdoor', 'P2_WinPct_Outdoor',
+        'Tournament_Encoded', 'Surface_Encoded', 'Series_Encoded', 'Round_Encoded', 'Court_Encoded',
+        'Win_Pct_Diff', 'Experience_Diff', 'Surface_Advantage', 'Series_Advantage', 'Court_Advantage'
+    ]
+    
+    # Only use columns that exist in both X_pred and expected_feature_order
+    available_features = [f for f in expected_feature_order if f in X_pred.columns]
+    X_pred = X_pred[available_features]
+    
     dmatrix = xgb.DMatrix(X_pred)
     prob_player1_wins = model.predict(dmatrix)[0]
     
@@ -194,6 +268,7 @@ def make_prediction(player1, player2, surface, round_type, series, court, best_o
 with tab1:
     st.header("🎯 Match Prediction")
     st.markdown("Select two players and match conditions to predict the winner using their historical statistics.")
+    st.info("ℹ️ **ATP Rankings & Points**: Using latest available data from historical matches (may not reflect current real-time rankings)")
     
     historical_df, processed_df = load_and_process_historical_data()
     
@@ -247,7 +322,7 @@ with tab1:
         
         if st.button("🎾 Predict Match Winner", type="primary", use_container_width=True):
             with st.spinner("Computing prediction..."):
-                result = make_prediction(player1, player2, surface, round_type, series, court, best_of, processed_df)
+                result = make_prediction(player1, player2, surface, round_type, series, court, best_of, historical_df, processed_df)
                 
                 if result:
                     st.markdown("### 🏆 Prediction Result")
@@ -273,23 +348,49 @@ with tab1:
                     
                     st.markdown("### 📊 Match-up Analysis")
                     
-                    fig = go.Figure(data=[
-                        go.Bar(
-                            name='Win Probability',
-                            x=[player1, player2],
-                            y=[result['prob_player1'] * 100, result['prob_player2'] * 100],
-                            marker_color=['#2ecc71' if result['predicted_winner'] == player1 else '#e74c3c',
-                                        '#e74c3c' if result['predicted_winner'] == player1 else '#2ecc71'],
-                            text=[f"{result['prob_player1']*100:.1f}%", f"{result['prob_player2']*100:.1f}%"],
-                            textposition='auto',
-                        )
-                    ])
+                    # Create a gauge chart showing win probability
+                    fig = go.Figure(go.Indicator(
+                        mode="gauge+number+delta",
+                        value=result['prob_player1'] * 100,
+                        domain={'x': [0, 1], 'y': [0, 1]},
+                        title={'text': f"{player1} vs {player2}<br>Win Probability", 'font': {'size': 20}},
+                        number={'suffix': "%", 'font': {'size': 40}},
+                        gauge={
+                            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                            'bar': {'color': "#2ecc71" if result['predicted_winner'] == player1 else "#e74c3c"},
+                            'bgcolor': "white",
+                            'borderwidth': 2,
+                            'bordercolor': "gray",
+                            'steps': [
+                                {'range': [0, 50], 'color': '#ffcccc'},  # Light red (Player 2 favored)
+                                {'range': [50, 100], 'color': '#ccffcc'}  # Light green (Player 1 favored)
+                            ],
+                            'threshold': {
+                                'line': {'color': "black", 'width': 4},
+                                'thickness': 0.75,
+                                'value': 50
+                            }
+                        }
+                    ))
                     
                     fig.update_layout(
-                        title="Predicted Win Probability",
-                        yaxis_title="Probability (%)",
-                        showlegend=False,
-                        height=400
+                        height=400,
+                        margin=dict(l=20, r=20, t=80, b=20),
+                        font={'color': "darkblue", 'family': "Arial"}
+                    )
+                    
+                    # Add annotations for player names on the gauge
+                    fig.add_annotation(
+                        x=0.15, y=0.1,
+                        text=f"← {player2}",
+                        showarrow=False,
+                        font=dict(size=14, color="#e74c3c" if result['predicted_winner'] == player2 else "gray")
+                    )
+                    fig.add_annotation(
+                        x=0.85, y=0.1,
+                        text=f"{player1} →",
+                        showarrow=False,
+                        font=dict(size=14, color="#2ecc71" if result['predicted_winner'] == player1 else "gray")
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
@@ -301,6 +402,8 @@ with tab1:
                     with col1:
                         st.markdown(f"**{player1}**")
                         p1_stats = result['player1_stats']
+                        st.metric("ATP Ranking", f"#{int(p1_stats.get('_latest_rank', 50))}")
+                        st.metric("ATP Points", f"{int(p1_stats.get('_latest_pts', 0)):,}")
                         st.metric("Total Matches", f"{p1_stats.get('Total_Matches', 0):.0f}")
                         st.metric("Win Rate", f"{p1_stats.get('Win_Pct', 0)*100:.1f}%")
                         st.metric(f"{surface} Win %", f"{p1_stats.get(f'WinPct_{surface}', 0)*100:.1f}%")
@@ -308,6 +411,8 @@ with tab1:
                     with col2:
                         st.markdown(f"**{player2}**")
                         p2_stats = result['player2_stats']
+                        st.metric("ATP Ranking", f"#{int(p2_stats.get('_latest_rank', 50))}")
+                        st.metric("ATP Points", f"{int(p2_stats.get('_latest_pts', 0)):,}")
                         st.metric("Total Matches", f"{p2_stats.get('Total_Matches', 0):.0f}")
                         st.metric("Win Rate", f"{p2_stats.get('Win_Pct', 0)*100:.1f}%")
                         st.metric(f"{surface} Win %", f"{p2_stats.get(f'WinPct_{surface}', 0)*100:.1f}%")
