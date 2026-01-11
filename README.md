@@ -139,7 +139,3 @@ Required GitHub Secrets:
 - [Hopsworks](https://app.hopsworks.ai) - Feature store and model registry
 - [Kaggle Dataset](https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull) - ATP Tennis data
 - [Streamlit](https://streamlit.io) - Dashboard framework
-
-## License
-
-MIT License
