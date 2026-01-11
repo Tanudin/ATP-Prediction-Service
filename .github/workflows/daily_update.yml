@@ -38,6 +38,6 @@ jobs:
           git config --local user.name "GitHub Actions Bot"
           git add -A
           git diff --quiet && git diff --staged --quiet || (
-            git commit -m "🤖 Daily update: predictions & model retraining ($(date +%Y-%m-%d))" &&
+            git commit -m "Daily update: predictions & model retraining ($(date +%Y-%m-%d))" &&
             git push
           )
