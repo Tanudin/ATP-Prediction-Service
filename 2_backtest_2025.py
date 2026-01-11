@@ -95,7 +95,7 @@ with open("model_metrics.json", "w") as f:
 
 feature_importance_df.to_csv("feature_importance.csv", index=False)
 
-print(f"\n📊 Model Evaluation Metrics:")
+print(f"\nModel Evaluation Metrics:")
 print(f"  Accuracy:  {accuracy:.2%}")
 print(f"  Precision: {precision:.2%}")
 print(f"  Recall:    {recall:.2%}")
@@ -180,13 +180,13 @@ smart_roi = (smart_final_profit / smart_total_wagered) * 100 if smart_total_wage
 smart_accuracy = results[results["confidence"] >= CONFIDENCE_THRESHOLD]["correct"].mean()
 
 print(f"\nBetting Performance:")
-print(f"\n📊 All Bets (Odds-Based):")
+print(f"\nAll Bets (Odds-Based):")
 print(f"  Total Bets:    {len(results):,}")
 print(f"  Total Wagered: ${total_wagered:,}")
 print(f"  Final Profit:  ${final_profit:+.2f}")
 print(f"  ROI:           {roi:+.2f}%")
 
-print(f"\n🎯 Smart Betting (Confidence ≥ {CONFIDENCE_THRESHOLD:.0%}):")
+print(f"\nSmart Betting (Confidence >= {CONFIDENCE_THRESHOLD:.0%}):")
 print(f"  Total Bets:    {smart_bets:,} ({smart_bets/len(results)*100:.1f}% of matches)")
 print(f"  Accuracy:      {smart_accuracy:.2%}")
 print(f"  Total Wagered: ${smart_total_wagered:,}")
@@ -194,5 +194,5 @@ print(f"  Final Profit:  ${smart_final_profit:+.2f}")
 print(f"  ROI:           {smart_roi:+.2f}%")
 
 results.to_csv("backtest_2025.csv", index=False)
-print(f"\n✓ Saved results to backtest_2025.csv")
+print(f"\nSaved results to backtest_2025.csv")
 print("=" * 60)

@@ -12,34 +12,30 @@ from datetime import datetime
 
 st.set_page_config(page_title="ATP Match Predictor", page_icon="🎾", layout="wide")
 
-# Custom CSS to make selectbox dropdown wider to show full names
 st.markdown("""
 <style>
-    /* Make the dropdown menu wider */
     div[data-baseweb="select"] > div {
         min-width: 250px !important;
     }
-    /* Make dropdown list wider */
     [data-baseweb="popover"] {
         min-width: 300px !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎾 ATP Tennis Match Prediction System")
-st.markdown("AI-powered tennis predictions with betting strategy analysis")
+st.title("ATP Tennis Match Prediction System")
+st.markdown("Machine learning-powered tennis match predictions with betting strategy analysis")
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "🎯 Match Predictor",
-    "📊 2025 Backtest Results",
-    "💰 Betting Strategy Comparison",
-    "🤖 Model Performance"
+    "Match Predictor",
+    "2025 Backtest Results",
+    "Betting Strategy Comparison",
+    "Model Performance"
 ])
 
-# Load model and data once using caching
 @st.cache_resource
 def load_model():
-    """Load the XGBoost model from Hopsworks"""
+    """Load the XGBoost model from Hopsworks model registry"""
     try:
         import hopsworks
         import dotenv
@@ -63,9 +59,9 @@ def load_model():
 
 @st.cache_data
 def load_and_process_historical_data():
-    """Load historical data and pre-compute ALL player statistics - runs once and caches"""
+    """Load historical data and compute player statistics"""
     try:
-        with st.spinner("Loading historical match data (one-time setup)..."):
+        with st.spinner("Loading historical match data..."):
             path = kagglehub.dataset_download("dissfya/atp-tennis-2000-2023daily-pull")
             dataset_dir = Path(path)
             data_file = dataset_dir / "atp_tennis.csv"
@@ -73,8 +69,7 @@ def load_and_process_historical_data():
             df["Date"] = pd.to_datetime(df["Date"])
             df = df[df["Date"] < pd.Timestamp.now()].copy()
         
-        with st.spinner("Computing player statistics (one-time setup, may take 1-2 minutes)..."):
-            # Process all historical data to get player stats
+        with st.spinner("Computing player statistics..."):
             processed_df = preprocess_data(df)
             final_df = final_train_data(processed_df)
             
@@ -84,7 +79,7 @@ def load_and_process_historical_data():
         return None, None
 
 def extract_player_features(processed_df, historical_df, player_name):
-    """Extract the latest statistics for a specific player from processed data"""
+    """Extract the latest statistics for a specific player"""
     player_rows = processed_df[processed_df['Player_1'] == player_name]
     
     if len(player_rows) == 0:
@@ -96,18 +91,14 @@ def extract_player_features(processed_df, historical_df, player_name):
     for col in latest_row.index:
         if col.startswith('P1_'):
             feature_name = col[3:]
-            # Skip Rank and Pts - we'll get those from historical data
             if feature_name not in ['Rank', 'Pts']:
                 player_features[feature_name] = latest_row[col]
     
-    # Extract latest rank and points from historical data
-    # Look for player in both Player_1 and Player_2 positions
     p1_matches = historical_df[historical_df['Player_1'] == player_name].copy()
     p2_matches = historical_df[historical_df['Player_2'] == player_name].copy()
     
-    # Get the most recent match
-    latest_rank = 50  # default
-    latest_pts = 0    # default
+    latest_rank = 50
+    latest_pts = 0
     
     if len(p1_matches) > 0:
         last_p1 = p1_matches.iloc[-1]
@@ -116,46 +107,35 @@ def extract_player_features(processed_df, historical_df, player_name):
     
     if len(p2_matches) > 0:
         last_p2 = p2_matches.iloc[-1]
-        # Use P2 data if it's more recent or P1 data doesn't exist
         if len(p1_matches) == 0 or last_p2['Date'] > last_p1['Date']:
             latest_rank = last_p2['Rank_2'] if last_p2['Rank_2'] > 0 else 50
             latest_pts = last_p2['Pts_2'] if last_p2['Pts_2'] > 0 else 0
     
-    # Don't add Rank and Pts here - they'll be added with P1_/P2_ prefix in build_match_features
     player_features['_latest_rank'] = latest_rank
     player_features['_latest_pts'] = latest_pts
     
     return player_features
 
 def build_match_features(player1_stats, player2_stats, surface, round_type, series, court, best_of):
-    """Build feature vector for a match given two players' statistics"""
+    """Build feature vector for a match prediction"""
     match_features = {}
     
-    # IMPORTANT: Add features in the exact order the model expects
-    # Model expects: Best_of, Rank_1, Rank_2, Rank_Diff, Pts_1, Pts_2, Pts_Diff first
-    
-    # 1. First add the ranking/points features at the beginning
     match_features['Best_of'] = best_of
     match_features['Rank_1'] = player1_stats.get('_latest_rank', 50)
     match_features['Rank_2'] = player2_stats.get('_latest_rank', 50)
-    match_features['Rank_Diff'] = match_features['Rank_2'] - match_features['Rank_1']  # Lower rank number = better
+    match_features['Rank_Diff'] = match_features['Rank_2'] - match_features['Rank_1']
     match_features['Pts_1'] = player1_stats.get('_latest_pts', 0)
     match_features['Pts_2'] = player2_stats.get('_latest_pts', 0)
     match_features['Pts_Diff'] = match_features['Pts_1'] - match_features['Pts_2']
     
-    # 2. Then add player statistics
     for feat, val in player1_stats.items():
-        if not feat.startswith('_'):  # Skip temporary fields like _latest_rank
+        if not feat.startswith('_'):
             match_features[f'P1_{feat}'] = val
     
     for feat, val in player2_stats.items():
-        if not feat.startswith('_'):  # Skip temporary fields
+        if not feat.startswith('_'):
             match_features[f'P2_{feat}'] = val
     
-    # 3. Then add encoded features
-    match_features['Tournament_Encoded'] = 0
-    
-    # 3. Then add encoded features
     match_features['Tournament_Encoded'] = 0
     
     surface_map = {'Hard': 0, 'Clay': 1, 'Grass': 2, 'Carpet': 3}
@@ -173,7 +153,6 @@ def build_match_features(player1_stats, player2_stats, surface, round_type, seri
     court_map = {'Indoor': 0, 'Outdoor': 1}
     match_features['Court_Encoded'] = court_map.get(court, 0)
     
-    # 4. Finally add derived features
     match_features['Win_Pct_Diff'] = match_features.get('P1_Win_Pct', 0.5) - match_features.get('P2_Win_Pct', 0.5)
     match_features['Experience_Diff'] = match_features.get('P1_Total_Matches', 0) - match_features.get('P2_Total_Matches', 0)
     
@@ -196,13 +175,12 @@ def build_match_features(player1_stats, player2_stats, surface, round_type, seri
     court_feat = 'WinPct_Indoor' if court == 'Indoor' else 'WinPct_Outdoor'
     match_features['Court_Advantage'] = match_features.get(f'P1_{court_feat}', 0) - match_features.get(f'P2_{court_feat}', 0)
     
-    # Odds_Diff at the end (not used in prediction but needed for compatibility)
     match_features['Odds_Diff'] = 0
     
     return match_features
 
 def make_prediction(player1, player2, surface, round_type, series, court, best_of, historical_df, processed_df):
-    """Make a prediction for a match using pre-computed player statistics"""
+    """Make a prediction for a match"""
     player1_stats = extract_player_features(processed_df, historical_df, player1)
     player2_stats = extract_player_features(processed_df, historical_df, player2)
     
@@ -232,7 +210,6 @@ def make_prediction(player1, player2, surface, round_type, series, court, best_o
     
     X_pred = match_df.drop([col for col in drop_cols if col in match_df.columns], axis=1)
     
-    # Reorder columns to match the exact order the model expects
     expected_feature_order = [
         'Best_of', 'Rank_1', 'Rank_2', 'Rank_Diff', 'Pts_1', 'Pts_2', 'Pts_Diff',
         'P1_Total_Matches', 'P1_Wins', 'P1_Losses', 'P2_Total_Matches', 'P2_Wins', 'P2_Losses',
@@ -247,7 +224,6 @@ def make_prediction(player1, player2, surface, round_type, series, court, best_o
         'Win_Pct_Diff', 'Experience_Diff', 'Surface_Advantage', 'Series_Advantage', 'Court_Advantage'
     ]
     
-    # Only use columns that exist in both X_pred and expected_feature_order
     available_features = [f for f in expected_feature_order if f in X_pred.columns]
     X_pred = X_pred[available_features]
     
@@ -266,18 +242,17 @@ def make_prediction(player1, player2, surface, round_type, series, court, best_o
     }
 
 with tab1:
-    st.header("🎯 Match Prediction")
-    st.markdown("Select two players and match conditions to predict the winner using their historical statistics.")
-    st.info("ℹ️ **ATP Rankings & Points**: Using latest available data from historical matches (may not reflect current real-time rankings)")
+    st.header("Match Prediction")
+    st.markdown("Select two players and match conditions to predict the winner.")
     
     historical_df, processed_df = load_and_process_historical_data()
     
     if historical_df is None or processed_df is None:
-        st.error("⚠️ Could not load historical data. Please check your internet connection.")
+        st.error("Could not load historical data. Please check your internet connection.")
     else:
         players = sorted(set(historical_df['Player_1'].tolist() + historical_df['Player_2'].tolist()))
         
-        st.success(f"✅ Loaded {len(historical_df):,} historical matches with {len(players)} players")
+        st.success(f"Loaded {len(historical_df):,} historical matches with {len(players)} players")
         
         col1, col2 = st.columns(2)
         
@@ -298,34 +273,34 @@ with tab1:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            surface = st.selectbox("Surface", ["Hard", "Clay", "Grass", "Carpet"], help="Court surface type")
+            surface = st.selectbox("Surface", ["Hard", "Clay", "Grass", "Carpet"])
         
         with col2:
             round_type = st.selectbox("Round", ["1st Round", "2nd Round", "3rd Round", "4th Round", 
-                 "Quarterfinals", "Semifinals", "The Final"], help="Tournament round", index=6)
+                 "Quarterfinals", "Semifinals", "The Final"], index=6)
         
         with col3:
-            best_of = st.selectbox("Best Of", [3, 5], help="Best of 3 or 5 sets")
+            best_of = st.selectbox("Best Of", [3, 5])
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            series = st.selectbox("Tournament Series", ["Masters 1000", "ATP250", "ATP500", "Grand Slam"], help="Tournament tier")
+            series = st.selectbox("Tournament Series", ["Masters 1000", "ATP250", "ATP500", "Grand Slam"])
         
         with col2:
-            court = st.selectbox("Court Type", ["Outdoor", "Indoor"], help="Indoor or outdoor court")
+            court = st.selectbox("Court Type", ["Outdoor", "Indoor"])
         
         with col3:
             st.markdown("")
         
         st.markdown("---")
         
-        if st.button("🎾 Predict Match Winner", type="primary", use_container_width=True):
+        if st.button("Predict Match Winner", type="primary", use_container_width=True):
             with st.spinner("Computing prediction..."):
                 result = make_prediction(player1, player2, surface, round_type, series, court, best_of, historical_df, processed_df)
                 
                 if result:
-                    st.markdown("### 🏆 Prediction Result")
+                    st.markdown("### Prediction Result")
                     
                     col1, col2, col3 = st.columns([1, 1, 1])
                     
@@ -339,16 +314,15 @@ with tab1:
                     
                     with col3:
                         if result['confidence'] > 0.70:
-                            conf_level = "Strong 💪"
+                            conf_level = "Strong"
                         elif result['confidence'] > 0.60:
-                            conf_level = "Moderate 👍"
+                            conf_level = "Moderate"
                         else:
-                            conf_level = "Weak ⚠️"
+                            conf_level = "Weak"
                         st.metric("Confidence Level", conf_level)
                     
-                    st.markdown("### 📊 Match-up Analysis")
+                    st.markdown("### Match-up Analysis")
                     
-                    # Create a gauge chart showing win probability
                     fig = go.Figure(go.Indicator(
                         mode="gauge+number+delta",
                         value=result['prob_player1'] * 100,
@@ -362,8 +336,8 @@ with tab1:
                             'borderwidth': 2,
                             'bordercolor': "gray",
                             'steps': [
-                                {'range': [0, 50], 'color': '#ffcccc'},  # Light red (Player 2 favored)
-                                {'range': [50, 100], 'color': '#ccffcc'}  # Light green (Player 1 favored)
+                                {'range': [0, 50], 'color': '#ffcccc'},
+                                {'range': [50, 100], 'color': '#ccffcc'}
                             ],
                             'threshold': {
                                 'line': {'color': "black", 'width': 4},
@@ -379,23 +353,22 @@ with tab1:
                         font={'color': "darkblue", 'family': "Arial"}
                     )
                     
-                    # Add annotations for player names on the gauge
                     fig.add_annotation(
                         x=0.15, y=0.1,
-                        text=f"← {player2}",
+                        text=f"{player2}",
                         showarrow=False,
                         font=dict(size=14, color="#e74c3c" if result['predicted_winner'] == player2 else "gray")
                     )
                     fig.add_annotation(
                         x=0.85, y=0.1,
-                        text=f"{player1} →",
+                        text=f"{player1}",
                         showarrow=False,
                         font=dict(size=14, color="#2ecc71" if result['predicted_winner'] == player1 else "gray")
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    st.markdown("### 📈 Player Statistics Comparison")
+                    st.markdown("### Player Statistics Comparison")
                     
                     col1, col2 = st.columns(2)
                     
@@ -417,7 +390,7 @@ with tab1:
                         st.metric("Win Rate", f"{p2_stats.get('Win_Pct', 0)*100:.1f}%")
                         st.metric(f"{surface} Win %", f"{p2_stats.get(f'WinPct_{surface}', 0)*100:.1f}%")
                     
-                    st.markdown("### 📋 Match Details")
+                    st.markdown("### Match Details")
                     col1, col2 = st.columns(2)
                     with col1:
                         st.info(f"""
@@ -431,16 +404,16 @@ with tab1:
                         **Court:** {court}  
                         """)
                     
-                    st.markdown("### 💰 Betting Recommendation")
+                    st.markdown("### Betting Recommendation")
                     if result['confidence'] >= 0.65:
                         st.success(f"""
-                        ✅ **RECOMMENDED BET**  
-                        Based on backtest analysis, predictions with ≥65% confidence have ~67% accuracy.  
+                        **RECOMMENDED BET**  
+                        Based on backtest analysis, predictions with >=65% confidence have ~67% accuracy.  
                         **Suggested bet:** {result['predicted_winner']} to win
                         """)
                     else:
                         st.warning(f"""
-                        ⚠️ **LOW CONFIDENCE - AVOID BETTING**  
+                        **LOW CONFIDENCE - AVOID BETTING**  
                         Prediction confidence is below 65%. Historical data shows lower accuracy for such predictions.  
                         **Suggestion:** Skip this bet or wait for more information.
                         """)
@@ -496,7 +469,7 @@ with tab2:
         st.dataframe(display_df, use_container_width=True)
     
     else:
-        st.warning("⚠️ Run `python 2_backtest_2025.py` to generate results")
+        st.warning("Run `python 2_backtest_2025.py` to generate results")
 
 with tab3:
     st.header("Betting Strategy Comparison")
@@ -508,7 +481,7 @@ with tab3:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📊 All Bets Strategy")
+            st.subheader("All Bets Strategy")
             st.markdown("**Approach**: Bet $1 on every match using bookmaker odds")
             
             total_bet = len(backtest) * 1
@@ -532,8 +505,8 @@ with tab3:
             """)
         
         with col2:
-            st.subheader("🎯 Smart Betting Strategy")
-            st.markdown("**Approach**: Only bet when prediction confidence ≥ 65%")
+            st.subheader("Smart Betting Strategy")
+            st.markdown("**Approach**: Only bet when prediction confidence >= 65%")
             
             smart_bets = (backtest["smart_bet_amount"] > 0).sum()
             smart_wagered = smart_bets * 1
@@ -551,7 +524,7 @@ with tab3:
             
             st.markdown(f"""
             **Analysis:**
-            - Prediction accuracy: **{smart_accuracy:.1%}** (6.4% improvement!)
+            - Prediction accuracy: **{smart_accuracy:.1%}** (6.4% improvement)
             - Bet on only **{smart_bets:,}** matches (58.5% selectivity)
             - Lost **$203** vs $379 (saved $176)
             - Better risk management by avoiding uncertain bets
@@ -582,48 +555,40 @@ with tab3:
         st.plotly_chart(fig, use_container_width=True)
     
     else:
-        st.warning("⚠️ Run `python 2_backtest_2025.py` first")
+        st.warning("Run `python 2_backtest_2025.py` first")
 
 with tab4:
     st.header("Model Performance & Feature Importance")
     
     if Path("model_metrics.json").exists() and Path("feature_importance.csv").exists():
-        # Load metrics
         with open("model_metrics.json", "r") as f:
             metrics = json.load(f)
         
         feature_importance = pd.read_csv("feature_importance.csv")
         
-        # Display key metrics only
-        st.subheader("📈 Model Evaluation")
+        st.subheader("Model Evaluation")
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            st.metric("Accuracy", f"{metrics['accuracy']:.2%}", 
-                     help="Overall prediction accuracy on 2025 matches")
+            st.metric("Accuracy", f"{metrics['accuracy']:.2%}")
         with col2:
-            st.metric("Precision", f"{metrics['precision']:.2%}",
-                     help="Of all predicted wins, how many were correct")
+            st.metric("Precision", f"{metrics['precision']:.2%}")
         with col3:
-            st.metric("Recall", f"{metrics['recall']:.2%}",
-                     help="Of all actual wins, how many did we predict correctly")
+            st.metric("Recall", f"{metrics['recall']:.2%}")
         with col4:
-            st.metric("F1 Score", f"{metrics['f1_score']:.2%}",
-                     help="Harmonic mean of precision and recall")
+            st.metric("F1 Score", f"{metrics['f1_score']:.2%}")
         with col5:
-            st.metric("ROC-AUC", f"{metrics['roc_auc']:.4f}",
-                     help="Area under ROC curve - measures model's ability to distinguish between wins/losses")
+            st.metric("ROC-AUC", f"{metrics['roc_auc']:.4f}")
         
         st.markdown("""
-        **What this means:**
+        **Model Performance:**
         - **Accuracy > 60%** means the model correctly predicts match winners more often than not
         - **Precision & Recall ~61%** shows balanced performance in predicting wins and losses
         - **ROC-AUC > 0.66** indicates good ability to distinguish between wins and losses
         - Model is better than random guessing (50%) but bookmakers still have the edge on odds
         """)
         
-        # Feature Importance - the most important visualization
-        st.subheader("⭐ Top 20 Most Important Features")
+        st.subheader("Top 20 Most Important Features")
         st.markdown("These features have the strongest influence on predictions:")
         
         top_features = feature_importance.head(20)
@@ -648,7 +613,6 @@ with tab4:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Key insights
         st.markdown(f"""
         **Key Insights:**
         - **{top_features.iloc[0]['feature']}** is the most important predictor (score: {top_features.iloc[0]['importance']:.1f})
@@ -657,9 +621,8 @@ with tab4:
         - The model uses {len(feature_importance)} total features
         """)
         
-        # Feature importance table
-        with st.expander("📋 View All Features & Importance Scores"):
+        with st.expander("View All Features & Importance Scores"):
             st.dataframe(feature_importance, use_container_width=True, height=400)
     
     else:
-        st.warning("⚠️ Run `python 2_backtest_2025.py` to generate model metrics")
+        st.warning("Run `python 2_backtest_2025.py` to generate model metrics")

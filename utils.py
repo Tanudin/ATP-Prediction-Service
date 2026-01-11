@@ -7,21 +7,11 @@ import datetime
 def preprocess_data(df):
     """
     Complete preprocessing pipeline for ATP match data.
-    Processes raw match data through all feature engineering steps.
     """
-    print("Computing player match history...")
     match_history = compute_player_match_history(df)
-    
-    print("Computing match percentages...")
     match_percentages = compute_match_percentages(match_history)
-    
-    print("Encoding categorical features...")
     encoded = encode_categorical_features(match_percentages)
-    
-    print("Computing derived features...")
     derived = compute_derived_features(encoded)
-    
-    print("Creating symmetric dataset...")
     symmetric = create_symmetric_dataset(derived)
     
     return symmetric
@@ -153,28 +143,15 @@ def init_player_match_history():
 
 
 def compute_player_match_history(df):
-    print(f"Processing {len(df)} matches chronologically...")
-
-    # 1. Sort chronologically
     df = df.sort_values("Date").reset_index(drop=True)
-
-    # 2. Initialize player history
     match_history = {}
-
     history_rows = []
 
-    # Calculate median rank for missing value replacement
     valid_ranks_1 = df[df["Rank_1"] > 0]["Rank_1"]
     valid_ranks_2 = df[df["Rank_2"] > 0]["Rank_2"]
     median_rank = pd.concat([valid_ranks_1, valid_ranks_2]).median()
 
-    print(f"  Median rank for missing values: {median_rank:.0f}")
-
-    # 3. Iterate through matches chronologically
     for idx, row in df.iterrows():
-        if idx % 5000 == 0:
-            print(f"  Processed {idx}/{len(df)} matches...")
-
         p1 = row["Player_1"]
         p2 = row["Player_2"]
         winner = row["Winner"]
@@ -184,7 +161,6 @@ def compute_player_match_history(df):
         if p2 not in match_history:
             match_history[p2] = init_player_match_history()
 
-        # Handle missing values for this match
         rank_1 = median_rank if row["Rank_1"] == -1 else row["Rank_1"]
         rank_2 = median_rank if row["Rank_2"] == -1 else row["Rank_2"]
         pts_1 = 0 if row["Pts_1"] == -1 else row["Pts_1"]
@@ -193,50 +169,40 @@ def compute_player_match_history(df):
         odd_2 = np.nan if row.get("Odd_2", -1) == -1 else row.get("Odd_2", -1)
 
         match_info = {
-            # Match identification
             "Date": row["Date"],
             "Tournament": row["Tournament"],
             "Player_1": p1,
             "Player_2": p2,
             "Winner": winner,
-            # Match context (for categorical encoding later)
             "Surface": row["Surface"],
             "Series": row["Series"],
             "Round": row["Round"],
             "Court": row["Court"],
             "Best_of": row["Best of"],
-            # Rankings (with missing value handling)
             "Rank_1": rank_1,
             "Rank_2": rank_2,
             "Rank_Diff": rank_1 - rank_2,
-            # Points (with missing value handling)
             "Pts_1": pts_1,
             "Pts_2": pts_2,
             "Pts_Diff": pts_1 - pts_2,
-            # Odds (with missing value handling - use NaN)
             "Odd_1": odd_1,
             "Odd_2": odd_2,
             "Odds_Diff": odd_1 - odd_2 if not pd.isna(odd_1) else np.nan,
         }
 
-        # Add Player 1's historical stats (before this match)
         for stat, val in match_history[p1].items():
             match_info[f"P1_{stat}"] = val
 
-        # Add Player 2's historical stats (before this match)
         for stat, val in match_history[p2].items():
             match_info[f"P2_{stat}"] = val
 
-        # Create target variable
         match_info["Player_1_Won"] = 1 if winner == p1 else 0
 
         history_rows.append(match_info)
 
-        # Both players played a match
         match_history[p1]["Total_Matches"] += 1
         match_history[p2]["Total_Matches"] += 1
 
-        # Update winner's stats
         if winner == p1:
             match_history[p1]["Wins"] += 1
             match_history[p2]["Losses"] += 1
@@ -246,27 +212,19 @@ def compute_player_match_history(df):
             match_history[p1]["Losses"] += 1
             winner_state = match_history[p2]
 
-        # Update winner's context-specific wins
         surface_key = f"Wins_{row['Surface']}"
         round_key = f"Wins_{row['Round']}"
         series_key = f"Wins_{row['Series']}"
         court_key = f"Wins_{row['Court']}"
         bestof_key = f"Wins_{row['Best of']}"
 
-        # Use .get() to safely handle any unexpected categories
         winner_state[surface_key] = winner_state.get(surface_key, 0) + 1
         winner_state[round_key] = winner_state.get(round_key, 0) + 1
         winner_state[series_key] = winner_state.get(series_key, 0) + 1
         winner_state[court_key] = winner_state.get(court_key, 0) + 1
         winner_state[bestof_key] = winner_state.get(bestof_key, 0) + 1
 
-    print(f"Processed all {len(df)} matches")
-
-    # 4. Convert to DataFrame
     atp_match_history = pd.DataFrame(history_rows)
-
-    print(f"match history shape -> {atp_match_history.shape}")
-
     return atp_match_history
 
 
@@ -413,49 +371,29 @@ def compute_derived_features(df):
 
 def create_symmetric_dataset(df):
     """
-    Create symmetric dataset where each match appears twice:
-    once from Player_1's perspective, once from Player_2's perspective.
-
-    Example:
-        Original: Federer vs Nadal (Nadal wins)
-        Creates:
-        - Row 1: P1=Federer, P2=Nadal, P1_Won=0
-        - Row 2: P1=Nadal, P2=Federer, P1_Won=1
+    Create symmetric dataset where each match appears twice.
     """
-    print("\n=== Creating Symmetric Dataset ===")
-    print(f"Original matches: {len(df):,}")
-
     df_p1_info = df.copy()
-
     df_p2_info = df.copy()
 
-    # Swap basic match info
     df_p2_info["Player_1"] = df["Player_2"]
     df_p2_info["Player_2"] = df["Player_1"]
 
-    # Swap rankings (and invert the differential)
     df_p2_info["Rank_1"] = df["Rank_2"]
     df_p2_info["Rank_2"] = df["Rank_1"]
     df_p2_info["Rank_Diff"] = -df["Rank_Diff"]
 
-    # Swap points (and invert the differential)
     df_p2_info["Pts_1"] = df["Pts_2"]
     df_p2_info["Pts_2"] = df["Pts_1"]
     df_p2_info["Pts_Diff"] = -df["Pts_Diff"]
 
-    # Swap odds (and invert the differential)
     df_p2_info["Odd_1"] = df["Odd_2"]
     df_p2_info["Odd_2"] = df["Odd_1"]
     df_p2_info["Odds_Diff"] = -df["Odds_Diff"]
 
-    # Swap ALL Player_1 and Player_2 statistics
-    # Get all P1_* and P2_* columns
     p1_cols = [col for col in df.columns if col.startswith("P1_")]
     p2_cols = [col for col in df.columns if col.startswith("P2_")]
 
-    print(f"Swapping {len(p1_cols)} P1_* columns with {len(p2_cols)} P2_* columns")
-
-    # Swap the columns
     for p1_col, p2_col in zip(p1_cols, p2_cols):
         df_p2_info[p1_col] = df[p2_col]
         df_p2_info[p2_col] = df[p1_col]
@@ -467,7 +405,6 @@ def create_symmetric_dataset(df):
         "Court_Advantage",
     ]
 
-    # Add Series_Advantage if it exists
     if "Series_Advantage" in df.columns:
         diff_features.append("Series_Advantage")
 
@@ -478,8 +415,6 @@ def create_symmetric_dataset(df):
     df_p2_info["Player_1_Won"] = 1 - df["Player_1_Won"]
 
     symmetric_df = pd.concat([df_p1_info, df_p2_info], ignore_index=True)
-
-    # Sort by date to maintain chronological order
     symmetric_df = symmetric_df.sort_values("Date").reset_index(drop=True)
 
     return symmetric_df
@@ -554,8 +489,5 @@ def final_train_data(df):
     df_clean = df_clean.fillna(0)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     df_clean['timestamp'] = pd.to_datetime(today)
-
-    print(f"Before: {len(df.columns)} columns")
-    print(f"After: {len(df_clean.columns)} columns")
 
     return df_clean
