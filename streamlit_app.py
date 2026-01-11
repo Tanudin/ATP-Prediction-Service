@@ -35,7 +35,18 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 @st.cache_resource
 def load_model():
-    """Load the XGBoost model from Hopsworks model registry"""
+    """Load the XGBoost model from local file or Hopsworks model registry"""
+    try:
+        # Try loading from local file first (much faster)
+        local_model_path = Path("tennis_model/model.json")
+        if local_model_path.exists():
+            booster = xgb.Booster()
+            booster.load_model(str(local_model_path))
+            return booster
+    except Exception as e:
+        st.warning(f"Could not load local model: {e}. Trying Hopsworks...")
+    
+    # Fallback to Hopsworks if local file doesn't exist or fails
     try:
         import hopsworks
         import dotenv
