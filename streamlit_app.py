@@ -334,47 +334,38 @@ with tab1:
                     
                     st.markdown("### Match-up Analysis")
                     
-                    fig = go.Figure(go.Indicator(
-                        mode="gauge+number+delta",
-                        value=result['prob_player1'] * 100,
-                        domain={'x': [0, 1], 'y': [0, 1]},
-                        title={'text': f"{player1} vs {player2}<br>Win Probability", 'font': {'size': 20}},
-                        number={'suffix': "%", 'font': {'size': 40}},
-                        gauge={
-                            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-                            'bar': {'color': "#2ecc71" if result['predicted_winner'] == player1 else "#e74c3c"},
-                            'bgcolor': "white",
-                            'borderwidth': 2,
-                            'bordercolor': "gray",
-                            'steps': [
-                                {'range': [0, 50], 'color': '#ffcccc'},
-                                {'range': [50, 100], 'color': '#ccffcc'}
-                            ],
-                            'threshold': {
-                                'line': {'color': "black", 'width': 4},
-                                'thickness': 0.75,
-                                'value': 50
-                            }
-                        }
-                    ))
+                    # Create simple bar chart showing win probabilities
+                    prob_data = pd.DataFrame({
+                        'Player': [player1, player2],
+                        'Win Probability': [result['prob_player1'] * 100, result['prob_player2'] * 100]
+                    })
+                    
+                    fig = px.bar(
+                        prob_data,
+                        x='Win Probability',
+                        y='Player',
+                        orientation='h',
+                        text='Win Probability',
+                        color='Win Probability',
+                        color_continuous_scale=['#e74c3c', '#f39c12', '#2ecc71'],
+                        range_color=[0, 100]
+                    )
+                    
+                    fig.update_traces(
+                        texttemplate='%{text:.1f}%',
+                        textposition='inside',
+                        textfont_size=16,
+                        textfont_color='white'
+                    )
                     
                     fig.update_layout(
-                        height=400,
-                        margin=dict(l=20, r=20, t=80, b=20),
-                        font={'color': "darkblue", 'family': "Arial"}
-                    )
-                    
-                    fig.add_annotation(
-                        x=0.15, y=0.1,
-                        text=f"{player2}",
-                        showarrow=False,
-                        font=dict(size=14, color="#e74c3c" if result['predicted_winner'] == player2 else "gray")
-                    )
-                    fig.add_annotation(
-                        x=0.85, y=0.1,
-                        text=f"{player1}",
-                        showarrow=False,
-                        font=dict(size=14, color="#2ecc71" if result['predicted_winner'] == player1 else "gray")
+                        height=250,
+                        xaxis_title="Win Probability (%)",
+                        yaxis_title="",
+                        showlegend=False,
+                        xaxis=dict(range=[0, 100], ticksuffix='%'),
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        font=dict(size=14)
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
@@ -402,18 +393,13 @@ with tab1:
                         st.metric(f"{surface} Win %", f"{p2_stats.get(f'WinPct_{surface}', 0)*100:.1f}%")
                     
                     st.markdown("### Match Details")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.info(f"""
-                        **Surface:** {surface}  
-                        **Round:** {round_type}  
-                        **Series:** {series}
-                        """)
-                    with col2:
-                        st.info(f"""
-                        **Best Of:** {best_of} sets  
-                        **Court:** {court}  
-                        """)
+                    st.info(f"""
+                    **Surface:** {surface}  
+                    **Round:** {round_type}  
+                    **Series:** {series}  
+                    **Best Of:** {best_of} sets  
+                    **Court:** {court}
+                    """)
                     
                     st.markdown("### Betting Recommendation")
                     if result['confidence'] >= 0.65:
